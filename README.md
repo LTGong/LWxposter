@@ -1,4 +1,4 @@
-#LWxposter
+# LWxposter
 
 Code that cross-posts from LessWrong community posts such as those [found here](https://www.lesswrong.com/upcomingEvents).
 
