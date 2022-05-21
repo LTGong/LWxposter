@@ -8,7 +8,6 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 from bs4 import BeautifulSoup
 from facebook import GraphAPI
-import ssl
 import certifi
 from markdownify import markdownify
 
@@ -70,6 +69,7 @@ def send_email(event, recipient):
         print("Error: %s!\n\n" % exception)
 
 def post_to_fb(event, recipients):
+    #https://developers.facebook.com/tools/explorer to get a new one.
     graph = GraphAPI(access_token=credentials['fb_access_token'])
 
     message = markdownify(format_HTML_message(event))
@@ -100,18 +100,19 @@ def readable_time(timestamp):
     return(f"{d:%A, %b %-d at %-I:%M %p %Z}")
 
 def format_HTML_message(event):
+    #TODO: robust handling of empty fields
     title = f"<h2>{event['title']}</h2>"
 
     time = readable_time(event['startTime'])
     location = event['location']
-    contact = event['contactInfo']
-    groups = f"Event type: {', '.join(event['types'])}" if event['types'] else None
+    contact = f"Contact info: {event['contactInfo']}" if event['contactInfo'] else None
+    groups = f"Event types: {', '.join(event['types'])}" if event['types'] else None
 
     meta_list = [time, location, contact, groups]
     meta_list = [i for i in meta_list if i]
     event_details = f"<p><i>{'<br>'.join(meta_list)}</i></p>"
 
-    original_post_link = f'''<p><i><a href= "{event['pageUrl']}">Originally posted</a> to LessWrong.com. Brought to you by a <a href = "github.com">friendly bot</a><i></p>'''
+    original_post_link = f'''<p><i><a href= "{event['pageUrl']}">Crossposted from LessWrong.com</a> by a <a href = "https://github.com/LTGong/LWxposter">friendly bot</a>.<i></p>'''
     body = title + event_details + event["htmlBody"] + original_post_link 
     
     return body 
@@ -143,29 +144,32 @@ def query_server():
     """
 
     url = 'https://www.lesswrong.com/graphql'
-    r = requests.post(url, json={'query': query})
-    
+    r = requests.post(url, json={'query': query}, headers = {'User-Agent': "'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/99.0.4844.51 Safari/537.36'"})
+    print(r)
     d = json.loads(r.text)
     return d["data"]["posts"]["results"]
 
 
 def dispatch(result):
+    #TODO more robust to empty fields in objects
     with open("destinations.json") as f:
         dests = json.load(f)
 
     for dest in dests:
+        #default state
         location_match = False
         type_match = False
+
         for target_location in dest['locations']:
-            if target_location in result["location"]: #this is string "in," as result location is a string, 
+            #`"" in "x"` is True, making it a catchall
+            if target_location in result["location"] or target_location in result["htmlBody"]:
                 location_match = True
-        if set(dest['types']).intersection(result["types"]):
+        if set(dest["types"]).intersection(result["types"]):
             type_match = True
         if location_match and type_match:
-            print("match!")
-            #send_email(result,dest.get("email"))
-            #post_to_fb(result,[dest.get("fb")])
-            #post_to_discord(result, dest.get("discord"))
+            if dest.get("email") : send_email(result,dest.get("email")) #empty string should also be falsy
+            if dest.get("fb") : post_to_fb(result,[dest.get("fb")]) #TODO refactor dest array for single destinations.
+            if dest.get("discord") : post_to_discord(result, dest.get("discord"))
 
 
 

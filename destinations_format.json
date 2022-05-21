@@ -1,7 +1,8 @@
-[
+
+[    
     {
         "_comment":"description of this entry",
-        "locations":["Anaheim", "Berkeley"],
+        "locations":["Anaheim", "Berkeley", "sends email if any of these are found"],
         "types":["LW", "SSC", "EA","MIRIx"],
         "fb":"<as described here https://developers.facebook.com/docs/groups-api/guides#posting-on-a-group>",
         "email":"<ex foo@bar.com>",
