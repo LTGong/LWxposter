@@ -4,10 +4,10 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import os
 import requests
-#from botocore.vendored import requests
 import datetime
 from zoneinfo import ZoneInfo
-#from bs4 import BeautifulSoup
+#from bs4 import BeautifulSoup #if you include this, it will probably 
+#need to be explicitly loaded in the dockerfile on its own line.
 from facebook import GraphAPI
 import certifi
 from markdownify import markdownify
@@ -17,6 +17,7 @@ with open("credentials.json") as f:
         credentials = json.load(f)
 MAINTAINER_EMAIL = os.environ.get('MAINTAINER_EMAIL')
 
+#currently just emailing markdown.
 # def html_to_text(html):
 #     soup = BeautifulSoup(html , "html.parser")
 #     text = ''
@@ -70,18 +71,12 @@ def send_email(event, recipient):
     except Exception as exception:
         print("Error: %s!\n\n" % exception)
 
-def post_to_fb(event, recipients):
+def post_to_fb(event, group):
     #https://developers.facebook.com/tools/explorer to get a new one.
     graph = GraphAPI(access_token=credentials['fb_access_token'])
-
     message = markdownify(format_HTML_message(event))
-    
     link = event['pageUrl']
-    groups = recipients
- 
-    for group in groups:
-        graph.put_object(group,'feed', message=message,link=link, formatting = "MARKDOWN")
-        #print(graph.get_connections(group, 'feed'))
+    graph.put_object(group,'feed', message=message,link=link, formatting = "MARKDOWN")
 
 def post_to_discord(event, webhook_url): 
     post_text = markdownify(format_HTML_message(event)) 
@@ -153,18 +148,14 @@ def query_one_from_server():
 
 def query_server_timed():
   now = datetime.datetime.now()
-  a_week_ago = now - datetime.timedelta(hours=1)
-  week_ago_iso = a_week_ago.isoformat()
+  an_hour_ago = now - datetime.timedelta(hours=1)
+  hour_ago_iso = an_hour_ago.isoformat()
   query = """{
     posts(input: {
       terms: {
         view: "upcomingEvents"
-        after: """ +f'"{week_ago_iso}"'+ """
-        
+        after: """ +f'"{hour_ago_iso}"'+ """  
         meta: null  # this seems to get both meta and non-meta posts
-
-
-
       }
     }) {
       results {
@@ -173,6 +164,9 @@ def query_server_timed():
         userId
         htmlBody
         pageUrl
+        location
+        contactInfo
+        startTime
       }
     }
   }
@@ -211,8 +205,7 @@ def dispatch(result, dests):
             for email_address in get_as_list("email", dest):
                 send_email(result, email_address)
             for fb_address in get_as_list("fb", dest):
-                print(fb_address)
-                #post_to_fb(result, fb_address)
+                post_to_fb(result, int(fb_address))
             for discord_address in get_as_list("discord", dest):
                 post_to_discord(result,discord_address)
 
@@ -225,12 +218,11 @@ def read_destinations():
 
 def handler(event, context): #lambda_handler
     print(event)
-    if event['detail-type'] == 'Scheduled Event':  
-        results = query_server_timed()      
-        results = query_one_from_server()#for testing
+    if 'detail-type' in event and event['detail-type'] == 'Scheduled Event':  
+        results = query_server_timed()
+        print(results)     
     else:
         results = query_one_from_server()
-        results += query_one_from_server()#for testing
     
     destination_object = read_destinations()
     print(destination_object)
